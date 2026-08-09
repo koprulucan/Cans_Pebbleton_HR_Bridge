@@ -1,4 +1,5 @@
 package com.example.canspebbletonhrbridge
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
@@ -22,28 +23,41 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import io.rebble.pebblekit2.client.DefaultPebbleSender
+import java.util.UUID
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
 
-    private var bluetoothPermissionGranted
+    private var bluetoothReady
             by mutableStateOf(false)
 
-    private var bleAdvertisingSupported
+    private var advertisingSupported
             by mutableStateOf(false)
 
-    private var running
+    private var pebbleHeartRate
+            by mutableStateOf<Int?>(null)
+
+    private var transmitting
             by mutableStateOf(false)
 
-    private var bleStatus
-            by mutableStateOf("Bereit")
+    private var status
+            by mutableStateOf("Ready")
 
     private var heartRatePeripheral:
             HeartRateBlePeripheral? = null
 
-
     private val bluetoothPermissionLauncher =
         registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
+            ActivityResultContracts
+                .RequestMultiplePermissions()
         ) { permissions ->
 
             val advertiseGranted =
@@ -56,14 +70,22 @@ class MainActivity : ComponentActivity() {
                     Manifest.permission.BLUETOOTH_CONNECT
                 ] ?: true
 
-            bluetoothPermissionGranted =
-                advertiseGranted && connectGranted
+            bluetoothReady =
+                advertiseGranted &&
+                        connectGranted
 
-            if (bluetoothPermissionGranted) {
-                checkBleAdvertisingSupport()
+            if (bluetoothReady) {
+                checkBleSupport()
             }
         }
+    private val pebbleSender by lazy {
+        DefaultPebbleSender(this)
+    }
 
+    private val pebbleAppUuid =
+        UUID.fromString(
+            "49b5977c-c9d1-4819-9410-0b7c2a9716f9"
+        )
 
     override fun onCreate(
         savedInstanceState: Bundle?
@@ -72,42 +94,99 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         checkBluetoothPermissions()
+        startWatchApp()
+
+        lifecycleScope.launch {
+
+            HeartRateState
+                .heartRate
+                .collect { bpm ->
+
+                    pebbleHeartRate = bpm
+
+                    if (bpm == null) {
+
+                        if (transmitting) {
+                            stopTransmission()
+                        }
+
+                    } else if (transmitting) {
+
+                        heartRatePeripheral
+                            ?.updateHeartRate(bpm)
+                    }
+                }
+        }
 
         setContent {
 
             MaterialTheme {
 
                 Surface(
-                    modifier = Modifier.fillMaxSize()
-                ) {
+                    modifier =
+                        Modifier.fillMaxSize()
+                )
+                {
 
                     HeartRateScreen(
-                        bluetoothAllowed =
-                            bluetoothPermissionGranted,
+                        bluetoothReady =
+                            bluetoothReady,
 
                         advertisingSupported =
-                            bleAdvertisingSupported,
+                            advertisingSupported,
 
-                        running =
-                            running,
+                        heartRate =
+                            pebbleHeartRate,
+
+                        transmitting =
+                            transmitting,
 
                         status =
-                            bleStatus,
+                            status,
 
                         onStart = {
-                            startHeartRateTest()
+                            startTransmission()
                         },
 
                         onStop = {
-                            stopHeartRateTest()
+                            stopTransmission()
+                        },
+                        onExit = {
+                            endSessionAndExit()
                         }
                     )
                 }
             }
         }
     }
+    private fun endSessionAndExit() {
 
+        status = "Ending session..."
 
+        lifecycleScope.launch {
+
+            pebbleSender.stopAppOnTheWatch(
+                pebbleAppUuid
+            )
+
+            heartRatePeripheral?.stop()
+            heartRatePeripheral = null
+
+            transmitting = false
+
+            HeartRateState.clear()
+
+            finishAndRemoveTask()
+        }
+    }
+    private fun startWatchApp() {
+
+        lifecycleScope.launch {
+            pebbleSender.startAppOnTheWatch(
+                pebbleAppUuid
+            )
+        }
+    }
     private fun checkBluetoothPermissions() {
 
         if (
@@ -115,83 +194,79 @@ class MainActivity : ComponentActivity() {
             Build.VERSION_CODES.S
         ) {
 
-            val advertisePermission =
+            val advertiseGranted =
                 ContextCompat.checkSelfPermission(
                     this,
-                    Manifest.permission.BLUETOOTH_ADVERTISE
-                )
+                    Manifest.permission
+                        .BLUETOOTH_ADVERTISE
+                ) ==
+                        PackageManager
+                            .PERMISSION_GRANTED
 
-            val connectPermission =
+            val connectGranted =
                 ContextCompat.checkSelfPermission(
                     this,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                )
-
+                    Manifest.permission
+                        .BLUETOOTH_CONNECT
+                ) ==
+                        PackageManager
+                            .PERMISSION_GRANTED
 
             if (
-                advertisePermission ==
-                PackageManager.PERMISSION_GRANTED
-                &&
-                connectPermission ==
-                PackageManager.PERMISSION_GRANTED
+                advertiseGranted &&
+                connectGranted
             ) {
 
-                bluetoothPermissionGranted = true
+                bluetoothReady = true
 
-                checkBleAdvertisingSupport()
+                checkBleSupport()
 
             } else {
 
-                bluetoothPermissionLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.BLUETOOTH_ADVERTISE,
-                        Manifest.permission.BLUETOOTH_CONNECT
+                bluetoothPermissionLauncher
+                    .launch(
+                        arrayOf(
+                            Manifest.permission
+                                .BLUETOOTH_ADVERTISE,
+
+                            Manifest.permission
+                                .BLUETOOTH_CONNECT
+                        )
                     )
-                )
             }
 
         } else {
 
-            bluetoothPermissionGranted = true
+            bluetoothReady = true
 
-            checkBleAdvertisingSupport()
+            checkBleSupport()
         }
     }
 
-
     @SuppressLint("MissingPermission")
-    private fun checkBleAdvertisingSupport() {
+    private fun checkBleSupport() {
 
         val bluetoothManager =
             getSystemService(
                 BluetoothManager::class.java
             )
 
-        val bluetoothAdapter =
+        val adapter =
             bluetoothManager.adapter
 
-        bleAdvertisingSupported =
-            bluetoothAdapter != null &&
-                    bluetoothAdapter
-                        .isMultipleAdvertisementSupported
+        advertisingSupported =
+            adapter != null &&
+                    adapter.isEnabled &&
+                    adapter.isMultipleAdvertisementSupported
     }
 
+    private fun startTransmission() {
 
-    private fun startHeartRateTest() {
+        val bpm =
+            pebbleHeartRate
+                ?: return
 
-        if (
-            !bluetoothPermissionGranted ||
-            !bleAdvertisingSupported
-        ) {
-            return
-        }
-
-
-        bleStatus =
-            "Starte Bluetooth..."
-
-        running = true
-
+        heartRatePeripheral?.stop()
 
         heartRatePeripheral =
             HeartRateBlePeripheral(
@@ -199,53 +274,50 @@ class MainActivity : ComponentActivity() {
             ) { newStatus ->
 
                 runOnUiThread {
-
-                    bleStatus =
-                        newStatus
+                    status = newStatus
                 }
             }
 
+        transmitting = true
 
-        heartRatePeripheral?.start(
-            120
-        )
+        heartRatePeripheral
+            ?.start(bpm)
     }
 
-
-    private fun stopHeartRateTest() {
+    private fun stopTransmission() {
 
         heartRatePeripheral?.stop()
 
         heartRatePeripheral = null
 
-        running = false
+        transmitting = false
 
-        bleStatus =
-            "Übertragung gestoppt"
+        status = "Stopped"
     }
-
 
     override fun onDestroy() {
 
         heartRatePeripheral?.stop()
-
+        pebbleSender.close()
         super.onDestroy()
     }
 }
 
-
 @Composable
 fun HeartRateScreen(
-    bluetoothAllowed: Boolean,
+    bluetoothReady: Boolean,
     advertisingSupported: Boolean,
-    running: Boolean,
+    heartRate: Int?,
+    transmitting: Boolean,
     status: String,
     onStart: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onExit: () -> Unit
 ) {
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier =
+            Modifier.fillMaxSize(),
 
         verticalArrangement =
             Arrangement.Center,
@@ -259,50 +331,74 @@ fun HeartRateScreen(
         )
 
         Text(
-            "Testpuls: 120 BPM"
+            if (heartRate != null) {
+                "Pebble heart rate: $heartRate BPM"
+            } else {
+                "Pebble heart rate: -- BPM"
+            }
         )
-
 
         Text(
-            if (bluetoothAllowed)
-                "Bluetooth-Berechtigung: OK"
-            else
-                "Bluetooth-Berechtigung fehlt"
+            if (bluetoothReady) {
+                "Bluetooth: ready"
+            } else {
+                "Bluetooth permission required"
+            }
         )
-
 
         Text(
-            if (advertisingSupported)
-                "BLE Advertising: unterstützt"
-            else
-                "BLE Advertising: NICHT unterstützt"
+            if (advertisingSupported) {
+                "BLE advertising: ready"
+            } else {
+                "BLE advertising: unavailable"
+            }
         )
-
 
         Text(
             "Status: $status"
         )
 
-
         Button(
+            modifier = Modifier.fillMaxWidth(0.85f),
+
             enabled =
-                bluetoothAllowed &&
-                        advertisingSupported,
+                transmitting ||
+                        (
+                                bluetoothReady &&
+                                        advertisingSupported &&
+                                        heartRate != null
+                                ),
 
             onClick = {
-
-                if (running)
+                if (transmitting) {
                     onStop()
-                else
+                } else {
                     onStart()
+                }
             }
         ) {
-
             Text(
-                if (running)
-                    "Stoppen"
-                else
-                    "120 BPM senden"
+                if (transmitting) {
+                    "Stop transmission"
+                } else {
+                    "Start heart rate transmission"
+                }
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.height(12.dp)
+        )
+
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(0.85f),
+
+            onClick = {
+                onExit()
+            }
+        ) {
+            Text(
+                "End session & close"
             )
         }
     }

@@ -13,14 +13,12 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
-import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.ParcelUuid
 import java.util.UUID
 
+@SuppressLint("MissingPermission")
 class HeartRateBlePeripheral(
     private val context: Context,
     private val onStatusChanged: (String) -> Unit
@@ -28,20 +26,13 @@ class HeartRateBlePeripheral(
 
     companion object {
 
-        // Standard Bluetooth Heart Rate Service
         private val HEART_RATE_SERVICE_UUID =
             UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
 
-        // Standard Heart Rate Measurement
         private val HEART_RATE_MEASUREMENT_UUID =
             UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb")
 
-        // Body Sensor Location
-        private val BODY_SENSOR_LOCATION_UUID =
-            UUID.fromString("00002a38-0000-1000-8000-00805f9b34fb")
-
-        // Client Characteristic Configuration Descriptor
-        private val CCCD_UUID =
+        private val CLIENT_CONFIGURATION_UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 
@@ -51,74 +42,72 @@ class HeartRateBlePeripheral(
     private val bluetoothAdapter =
         bluetoothManager.adapter
 
-    private val handler =
-        Handler(Looper.getMainLooper())
-
-    private var advertiser: BluetoothLeAdvertiser? = null
+    private var advertiser =
+        bluetoothAdapter.bluetoothLeAdvertiser
 
     private var gattServer: BluetoothGattServer? = null
 
-    private var heartRateCharacteristic:
-            BluetoothGattCharacteristic? = null
+    private val subscribedDevices =
+        mutableSetOf<BluetoothDevice>()
 
-    private var connectedDevice:
-            BluetoothDevice? = null
+    @Volatile
+    private var currentHeartRate = 60
 
-    private var notificationsEnabled = false
+    private val heartRateCharacteristic =
+        BluetoothGattCharacteristic(
+            HEART_RATE_MEASUREMENT_UUID,
+            BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+            0
+        )
 
-    private var currentHeartRate = 120
+    private val clientConfigurationDescriptor =
+        BluetoothGattDescriptor(
+            CLIENT_CONFIGURATION_UUID,
+            BluetoothGattDescriptor.PERMISSION_READ or
+                    BluetoothGattDescriptor.PERMISSION_WRITE
+        )
 
-    private var heartRateRunnable: Runnable? = null
+    init {
+        heartRateCharacteristic.addDescriptor(
+            clientConfigurationDescriptor
+        )
+    }
 
-
-    /*
-     * Wird aufgerufen, wenn Android das Bluetooth-
-     * Advertising gestartet hat.
-     */
     private val advertiseCallback =
         object : AdvertiseCallback() {
 
             override fun onStartSuccess(
-                settingsInEffect: AdvertiseSettings?
+                settingsInEffect: AdvertiseSettings
             ) {
                 onStatusChanged(
-                    "BLE-Herzfrequenzsensor ist sichtbar"
+                    "Advertising BLE heart rate service"
                 )
             }
 
-            override fun onStartFailure(errorCode: Int) {
+            override fun onStartFailure(
+                errorCode: Int
+            ) {
                 onStatusChanged(
-                    "Advertising-Fehler: $errorCode"
+                    "BLE advertising failed ($errorCode)"
                 )
             }
         }
 
-
-    /*
-     * Hier reagieren wir auf das Peloton bzw.
-     * einen anderen Bluetooth-Client.
-     */
     private val gattServerCallback =
         object : BluetoothGattServerCallback() {
 
-            @SuppressLint("MissingPermission")
             override fun onServiceAdded(
                 status: Int,
                 service: BluetoothGattService
             ) {
-
-                if (
-                    status == BluetoothGatt.GATT_SUCCESS &&
-                    service.uuid == HEART_RATE_SERVICE_UUID
-                ) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
                     startAdvertising()
                 } else {
                     onStatusChanged(
-                        "Heart-Rate-Service konnte nicht gestartet werden"
+                        "Could not create BLE heart rate service"
                     )
                 }
             }
-
 
             override fun onConnectionStateChange(
                 device: BluetoothDevice,
@@ -126,35 +115,24 @@ class HeartRateBlePeripheral(
                 newState: Int
             ) {
 
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                when (newState) {
 
-                    connectedDevice = device
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        onStatusChanged(
+                            "BLE client connected"
+                        )
+                    }
 
-                    onStatusChanged(
-                        "Gerät verbunden – warte auf Herzfrequenz-Abonnement"
-                    )
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        subscribedDevices.remove(device)
 
-                } else if (
-                    newState == BluetoothProfile.STATE_DISCONNECTED
-                ) {
-
-                    connectedDevice = null
-                    notificationsEnabled = false
-
-                    stopHeartRateLoop()
-
-                    onStatusChanged(
-                        "Sensor sichtbar – kein Gerät verbunden"
-                    )
+                        onStatusChanged(
+                            "Waiting for BLE client"
+                        )
+                    }
                 }
             }
 
-
-            /*
-             * Peloton aktiviert hier die Notifications
-             * für den Pulswert.
-             */
-            @SuppressLint("MissingPermission")
             override fun onDescriptorWriteRequest(
                 device: BluetoothDevice,
                 requestId: Int,
@@ -165,56 +143,41 @@ class HeartRateBlePeripheral(
                 value: ByteArray
             ) {
 
-                if (descriptor.uuid == CCCD_UUID) {
+                if (
+                    descriptor.uuid ==
+                    CLIENT_CONFIGURATION_UUID
+                ) {
 
-                    notificationsEnabled =
+                    if (
                         value.contentEquals(
-                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                            BluetoothGattDescriptor
+                                .ENABLE_NOTIFICATION_VALUE
                         )
+                    ) {
+
+                        subscribedDevices.add(device)
+
+                    } else {
+
+                        subscribedDevices.remove(device)
+                    }
 
                     if (responseNeeded) {
                         gattServer?.sendResponse(
                             device,
                             requestId,
                             BluetoothGatt.GATT_SUCCESS,
-                            0,
+                            offset,
                             null
                         )
                     }
 
-                    if (notificationsEnabled) {
-
-                        onStatusChanged(
-                            "Verbunden – sende $currentHeartRate BPM"
-                        )
-
-                        startHeartRateLoop()
-
-                    } else {
-
-                        stopHeartRateLoop()
-
-                        onStatusChanged(
-                            "Verbunden – Pulsübertragung deaktiviert"
-                        )
-                    }
-
-                } else {
-
-                    if (responseNeeded) {
-                        gattServer?.sendResponse(
-                            device,
-                            requestId,
-                            BluetoothGatt.GATT_FAILURE,
-                            0,
-                            null
-                        )
+                    if (device in subscribedDevices) {
+                        sendHeartRate(device)
                     }
                 }
             }
 
-
-            @SuppressLint("MissingPermission")
             override fun onDescriptorReadRequest(
                 device: BluetoothDevice,
                 requestId: Int,
@@ -222,106 +185,49 @@ class HeartRateBlePeripheral(
                 descriptor: BluetoothGattDescriptor
             ) {
 
-                if (descriptor.uuid == CCCD_UUID) {
-
-                    val value =
-                        if (notificationsEnabled)
-                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        else
-                            BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-
-                    gattServer?.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_SUCCESS,
-                        0,
-                        value
-                    )
-
-                } else {
-
-                    gattServer?.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_FAILURE,
-                        0,
-                        null
-                    )
-                }
-            }
-
-
-            /*
-             * Optional: Das Gerät kann fragen,
-             * wo der Sensor sitzt.
-             *
-             * 2 = wrist / Handgelenk
-             */
-            @SuppressLint("MissingPermission")
-            override fun onCharacteristicReadRequest(
-                device: BluetoothDevice,
-                requestId: Int,
-                offset: Int,
-                characteristic: BluetoothGattCharacteristic
-            ) {
-
                 if (
-                    characteristic.uuid ==
-                    BODY_SENSOR_LOCATION_UUID
+                    descriptor.uuid ==
+                    CLIENT_CONFIGURATION_UUID
                 ) {
 
+                    val value =
+                        if (device in subscribedDevices) {
+                            BluetoothGattDescriptor
+                                .ENABLE_NOTIFICATION_VALUE
+                        } else {
+                            BluetoothGattDescriptor
+                                .DISABLE_NOTIFICATION_VALUE
+                        }
+
                     gattServer?.sendResponse(
                         device,
                         requestId,
                         BluetoothGatt.GATT_SUCCESS,
-                        0,
-                        byteArrayOf(2)
-                    )
-
-                } else {
-
-                    gattServer?.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_FAILURE,
-                        0,
-                        null
+                        offset,
+                        value
                     )
                 }
             }
         }
 
+    fun start(
+        initialHeartRate: Int
+    ) {
 
-    /*
-     * Startet unseren virtuellen Herzfrequenzsensor.
-     */
-    @SuppressLint("MissingPermission")
-    fun start(heartRate: Int = 120) {
+        stop()
 
         currentHeartRate =
-            heartRate.coerceIn(30, 220)
-
-        if (!bluetoothAdapter.isEnabled) {
-
-            onStatusChanged(
-                "Bluetooth ist ausgeschaltet"
-            )
-
-            return
-        }
+            initialHeartRate.coerceIn(30, 220)
 
         advertiser =
             bluetoothAdapter.bluetoothLeAdvertiser
 
         if (advertiser == null) {
-
             onStatusChanged(
-                "BLE Advertising nicht verfügbar"
+                "BLE advertising is not available"
             )
-
             return
         }
-
 
         gattServer =
             bluetoothManager.openGattServer(
@@ -330,59 +236,12 @@ class HeartRateBlePeripheral(
             )
 
         if (gattServer == null) {
-
             onStatusChanged(
-                "GATT-Server konnte nicht gestartet werden"
+                "Could not start BLE GATT server"
             )
-
             return
         }
 
-
-        /*
-         * Heart Rate Measurement
-         *
-         * PROPERTY_NOTIFY bedeutet:
-         * Der Wert wird aktiv an das Peloton geschickt.
-         */
-        val measurementCharacteristic =
-            BluetoothGattCharacteristic(
-                HEART_RATE_MEASUREMENT_UUID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-                BluetoothGattCharacteristic.PERMISSION_READ
-            )
-
-
-        /*
-         * Der Client muss Notifications aktivieren können.
-         */
-        val cccd =
-            BluetoothGattDescriptor(
-                CCCD_UUID,
-                BluetoothGattDescriptor.PERMISSION_READ or
-                        BluetoothGattDescriptor.PERMISSION_WRITE
-            )
-
-        measurementCharacteristic.addDescriptor(cccd)
-
-        heartRateCharacteristic =
-            measurementCharacteristic
-
-
-        /*
-         * Sensorposition: Handgelenk
-         */
-        val bodyLocationCharacteristic =
-            BluetoothGattCharacteristic(
-                BODY_SENSOR_LOCATION_UUID,
-                BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
-            )
-
-
-        /*
-         * Heart Rate Service erstellen.
-         */
         val heartRateService =
             BluetoothGattService(
                 HEART_RATE_SERVICE_UUID,
@@ -390,38 +249,32 @@ class HeartRateBlePeripheral(
             )
 
         heartRateService.addCharacteristic(
-            measurementCharacteristic
+            heartRateCharacteristic
         )
-
-        heartRateService.addCharacteristic(
-            bodyLocationCharacteristic
-        )
-
 
         onStatusChanged(
-            "Starte Heart-Rate-Service..."
+            "Starting BLE heart rate service"
         )
 
-
-        val serviceStarted =
-            gattServer?.addService(
-                heartRateService
-            ) ?: false
-
-
-        if (!serviceStarted) {
-
-            onStatusChanged(
-                "GATT-Service konnte nicht hinzugefügt werden"
-            )
-        }
+        gattServer?.addService(
+            heartRateService
+        )
     }
 
+    fun updateHeartRate(
+        heartRate: Int
+    ) {
 
-    /*
-     * Jetzt wird das Handy für andere BLE-Geräte sichtbar.
-     */
-    @SuppressLint("MissingPermission")
+        currentHeartRate =
+            heartRate.coerceIn(30, 220)
+
+        subscribedDevices
+            .toList()
+            .forEach { device ->
+                sendHeartRate(device)
+            }
+    }
+
     private fun startAdvertising() {
 
         val settings =
@@ -429,110 +282,47 @@ class HeartRateBlePeripheral(
                 .setAdvertiseMode(
                     AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY
                 )
+                .setConnectable(true)
+                .setTimeout(0)
                 .setTxPowerLevel(
                     AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
                 )
-                .setConnectable(true)
-                .setTimeout(0)
                 .build()
 
-
-        val advertiseData =
+        val data =
             AdvertiseData.Builder()
                 .addServiceUuid(
-                    ParcelUuid(HEART_RATE_SERVICE_UUID)
+                    ParcelUuid(
+                        HEART_RATE_SERVICE_UUID
+                    )
                 )
-                .setIncludeDeviceName(true)
                 .build()
-
 
         advertiser?.startAdvertising(
             settings,
-            advertiseData,
+            data,
             advertiseCallback
         )
     }
 
+    private fun sendHeartRate(
+        device: BluetoothDevice
+    ) {
 
-    /*
-     * Ein Pulswert pro Sekunde.
-     */
-    private fun startHeartRateLoop() {
-
-        stopHeartRateLoop()
-
-        heartRateRunnable =
-            object : Runnable {
-
-                override fun run() {
-
-                    if (notificationsEnabled) {
-
-                        sendHeartRate()
-
-                        handler.postDelayed(
-                            this,
-                            1000
-                        )
-                    }
-                }
-            }
-
-        handler.post(
-            heartRateRunnable!!
-        )
-    }
-
-
-    private fun stopHeartRateLoop() {
-
-        heartRateRunnable?.let {
-            handler.removeCallbacks(it)
-        }
-
-        heartRateRunnable = null
-    }
-
-
-    /*
-     * Das eigentliche Bluetooth-Datenpaket.
-     */
-    @SuppressLint("MissingPermission")
-    private fun sendHeartRate() {
-
-        val device =
-            connectedDevice ?: return
-
-        val characteristic =
-            heartRateCharacteristic ?: return
-
-        val server =
-            gattServer ?: return
-
-
-        /*
-         * Byte 0 = Flags
-         *
-         * 0 bedeutet:
-         * Herzfrequenz wird als 8-Bit-Wert übertragen.
-         *
-         * Byte 1 = BPM
-         */
         val value =
             byteArrayOf(
                 0x00,
                 currentHeartRate.toByte()
             )
 
-
         if (
             Build.VERSION.SDK_INT >=
             Build.VERSION_CODES.TIRAMISU
         ) {
 
-            server.notifyCharacteristicChanged(
+            gattServer?.notifyCharacteristicChanged(
                 device,
-                characteristic,
+                heartRateCharacteristic,
                 false,
                 value
             )
@@ -540,42 +330,28 @@ class HeartRateBlePeripheral(
         } else {
 
             @Suppress("DEPRECATION")
-            characteristic.value = value
+            heartRateCharacteristic.value =
+                value
 
             @Suppress("DEPRECATION")
-            server.notifyCharacteristicChanged(
+            gattServer?.notifyCharacteristicChanged(
                 device,
-                characteristic,
+                heartRateCharacteristic,
                 false
             )
         }
     }
 
-
-    /*
-     * Alles sauber beenden.
-     */
-    @SuppressLint("MissingPermission")
     fun stop() {
-
-        stopHeartRateLoop()
-
-        notificationsEnabled = false
-        connectedDevice = null
 
         advertiser?.stopAdvertising(
             advertiseCallback
         )
 
-        advertiser = null
+        subscribedDevices.clear()
 
-        gattServer?.clearServices()
         gattServer?.close()
 
         gattServer = null
-
-        onStatusChanged(
-            "Übertragung gestoppt"
-        )
     }
 }

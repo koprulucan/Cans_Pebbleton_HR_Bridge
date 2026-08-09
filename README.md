@@ -4,6 +4,18 @@
 
 It is designed to let a Pebble act as a heart-rate sensor for devices and apps that can connect to a standard BLE heart-rate monitor.
 
+## Support the project
+
+Pebble HR Bridge is free to use.
+
+This is an independent hobby project and compatibility can vary between
+Pebble models, Android devices and Bluetooth equipment.
+
+If the app works well for you and you'd like to support further development,
+you can buy me a coffee:
+
+☕ https://buymeacoffee.com/koprulucan
+
 ## Status
 
 **Beta / real-world testing**
@@ -42,12 +54,25 @@ Peloton / other BLE HR client
 
 ## Features
 
-- receives live heart-rate values from Pebble HR Sender
-- uses PebbleKit Android 2
-- exposes the standard BLE Heart Rate Service
-- updates the BLE heart-rate value live while transmission is running
-- simple start/stop interface
-- no fixed or simulated heart-rate value during normal use
+- Receives live heart-rate data from Pebble HR Sender
+- Uses PebbleKit Android 2
+- Automatically starts the watch app
+- Exposes the standard Bluetooth LE Heart Rate Service
+- Updates the BLE heart-rate value live during transmission
+- Start and stop heart-rate transmission from the Android app
+- End the complete session with one button
+- Automatically closes the watch app when ending a session
+- Standard BLE Heart Rate compatibility
+- Dedicated app icon
+
+## Latest features
+
+### v0.2.0
+
+- Automatically starts the Pebble watch app when Pebble HR Bridge is opened.
+- Added **End session & close** to stop the BLE bridge, close the watch app, and close Pebble HR Bridge in one step.
+- Added a new app icon.
+- Improved the session workflow for faster start and shutdown.
 
 ## Requirements
 

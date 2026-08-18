@@ -289,7 +289,7 @@ class HeartRateBlePeripheral(
                 )
                 .build()
 
-        val data =
+        val advertiseData =
             AdvertiseData.Builder()
                 .addServiceUuid(
                     ParcelUuid(
@@ -298,9 +298,15 @@ class HeartRateBlePeripheral(
                 )
                 .build()
 
+        val scanResponse =
+            AdvertiseData.Builder()
+                .setIncludeDeviceName(true)
+                .build()
+
         advertiser?.startAdvertising(
             settings,
-            data,
+            advertiseData,
+            scanResponse,
             advertiseCallback
         )
     }

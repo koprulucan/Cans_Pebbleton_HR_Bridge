@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
@@ -47,8 +48,36 @@ class HeartRateBlePeripheral(
 
     private var gattServer: BluetoothGattServer? = null
 
+    /*
+     * All notification state is protected by this lock.
+     *
+     * Android requires us to wait for onNotificationSent()
+     * before sending another notification.
+     */
+    private val notificationLock = Any()
+
     private val subscribedDevices =
         mutableSetOf<BluetoothDevice>()
+
+    private val notificationInFlight =
+        mutableSetOf<BluetoothDevice>()
+
+    /*
+     * Only the latest pending heart rate is stored for each device.
+     *
+     * Example:
+     * 140 is being sent
+     * 141 arrives
+     * 142 arrives
+     * 143 arrives
+     *
+     * After 140 has finished, we send 143.
+     * Old intermediate values are not queued.
+     */
+    private val pendingHeartRates =
+        mutableMapOf<BluetoothDevice, Int>()
+
+    private var notificationErrorActive = false
 
     @Volatile
     private var currentHeartRate = 60
@@ -100,9 +129,13 @@ class HeartRateBlePeripheral(
                 status: Int,
                 service: BluetoothGattService
             ) {
+
                 if (status == BluetoothGatt.GATT_SUCCESS) {
+
                     startAdvertising()
+
                 } else {
+
                     onStatusChanged(
                         "Could not create BLE heart rate service"
                     )
@@ -118,13 +151,22 @@ class HeartRateBlePeripheral(
                 when (newState) {
 
                     BluetoothProfile.STATE_CONNECTED -> {
+
                         onStatusChanged(
                             "BLE client connected"
                         )
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        subscribedDevices.remove(device)
+
+                        synchronized(notificationLock) {
+
+                            subscribedDevices.remove(device)
+
+                            notificationInFlight.remove(device)
+
+                            pendingHeartRates.remove(device)
+                        }
 
                         onStatusChanged(
                             "Waiting for BLE client"
@@ -148,21 +190,30 @@ class HeartRateBlePeripheral(
                     CLIENT_CONFIGURATION_UUID
                 ) {
 
-                    if (
+                    val notificationsEnabled =
                         value.contentEquals(
                             BluetoothGattDescriptor
                                 .ENABLE_NOTIFICATION_VALUE
                         )
-                    ) {
 
-                        subscribedDevices.add(device)
+                    synchronized(notificationLock) {
 
-                    } else {
+                        if (notificationsEnabled) {
 
-                        subscribedDevices.remove(device)
+                            subscribedDevices.add(device)
+
+                        } else {
+
+                            subscribedDevices.remove(device)
+
+                            notificationInFlight.remove(device)
+
+                            pendingHeartRates.remove(device)
+                        }
                     }
 
                     if (responseNeeded) {
+
                         gattServer?.sendResponse(
                             device,
                             requestId,
@@ -172,8 +223,16 @@ class HeartRateBlePeripheral(
                         )
                     }
 
-                    if (device in subscribedDevices) {
-                        sendHeartRate(device)
+                    if (notificationsEnabled) {
+
+                        /*
+                         * Immediately give the client the current
+                         * heart-rate value after subscribing.
+                         */
+                        queueHeartRate(
+                            device,
+                            currentHeartRate
+                        )
                     }
                 }
             }
@@ -190,11 +249,19 @@ class HeartRateBlePeripheral(
                     CLIENT_CONFIGURATION_UUID
                 ) {
 
+                    val subscribed =
+                        synchronized(notificationLock) {
+                            device in subscribedDevices
+                        }
+
                     val value =
-                        if (device in subscribedDevices) {
+                        if (subscribed) {
+
                             BluetoothGattDescriptor
                                 .ENABLE_NOTIFICATION_VALUE
+
                         } else {
+
                             BluetoothGattDescriptor
                                 .DISABLE_NOTIFICATION_VALUE
                         }
@@ -207,6 +274,64 @@ class HeartRateBlePeripheral(
                         value
                     )
                 }
+            }
+
+            /*
+             * Android calls this after the previous notification
+             * has finished.
+             *
+             * Only now do we send the newest pending value.
+             */
+            override fun onNotificationSent(
+                device: BluetoothDevice,
+                status: Int
+            ) {
+
+                val recoveredFromError: Boolean
+
+                synchronized(notificationLock) {
+
+                    notificationInFlight.remove(device)
+
+                    recoveredFromError =
+                        status == BluetoothGatt.GATT_SUCCESS &&
+                                notificationErrorActive
+
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+
+                        notificationErrorActive = false
+
+                    } else {
+
+                        notificationErrorActive = true
+                    }
+                }
+
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+
+                    onStatusChanged(
+                        "BLE heart rate notification failed ($status)"
+                    )
+
+                    /*
+                     * Do not immediately retry here.
+                     * The next incoming heart-rate value will
+                     * restart the notification pipeline.
+                     */
+                    return
+                }
+
+                if (recoveredFromError) {
+
+                    onStatusChanged(
+                        "BLE client connected"
+                    )
+                }
+
+                /*
+                 * There may already be a newer BPM value waiting.
+                 */
+                sendNextPendingHeartRate(device)
             }
         }
 
@@ -223,9 +348,11 @@ class HeartRateBlePeripheral(
             bluetoothAdapter.bluetoothLeAdvertiser
 
         if (advertiser == null) {
+
             onStatusChanged(
                 "BLE advertising is not available"
             )
+
             return
         }
 
@@ -236,9 +363,11 @@ class HeartRateBlePeripheral(
             )
 
         if (gattServer == null) {
+
             onStatusChanged(
                 "Could not start BLE GATT server"
             )
+
             return
         }
 
@@ -268,11 +397,156 @@ class HeartRateBlePeripheral(
         currentHeartRate =
             heartRate.coerceIn(30, 220)
 
-        subscribedDevices
-            .toList()
-            .forEach { device ->
-                sendHeartRate(device)
+        val devices =
+            synchronized(notificationLock) {
+                subscribedDevices.toList()
             }
+
+        devices.forEach { device ->
+
+            queueHeartRate(
+                device,
+                currentHeartRate
+            )
+        }
+    }
+
+    /*
+     * Store the newest BPM for this device.
+     *
+     * If a notification is already in progress,
+     * nothing else happens yet.
+     */
+    private fun queueHeartRate(
+        device: BluetoothDevice,
+        heartRate: Int
+    ) {
+
+        synchronized(notificationLock) {
+
+            if (device !in subscribedDevices) {
+                return
+            }
+
+            pendingHeartRates[device] =
+                heartRate.coerceIn(30, 220)
+        }
+
+        sendNextPendingHeartRate(device)
+    }
+
+    /*
+     * Send a notification only if there is currently
+     * no notification in flight for this device.
+     */
+    private fun sendNextPendingHeartRate(
+        device: BluetoothDevice
+    ) {
+
+        val heartRateToSend =
+            synchronized(notificationLock) {
+
+                if (device !in subscribedDevices) {
+                    return
+                }
+
+                if (device in notificationInFlight) {
+                    return
+                }
+
+                val pending =
+                    pendingHeartRates.remove(device)
+                        ?: return
+
+                notificationInFlight.add(device)
+
+                pending
+            }
+
+        val notificationStarted =
+            sendHeartRateNotification(
+                device,
+                heartRateToSend
+            )
+
+        if (!notificationStarted) {
+
+            synchronized(notificationLock) {
+
+                notificationInFlight.remove(device)
+
+                /*
+                 * Preserve the value unless an even newer
+                 * value arrived in the meantime.
+                 */
+                if (
+                    device in subscribedDevices &&
+                    device !in pendingHeartRates
+                ) {
+
+                    pendingHeartRates[device] =
+                        heartRateToSend
+                }
+
+                notificationErrorActive = true
+            }
+
+            onStatusChanged(
+                "BLE heart rate notification could not be queued"
+            )
+        }
+    }
+
+    /*
+     * Actually hand one notification to Android's
+     * Bluetooth stack.
+     */
+    private fun sendHeartRateNotification(
+        device: BluetoothDevice,
+        heartRate: Int
+    ): Boolean {
+
+        val server =
+            gattServer ?: return false
+
+        val value =
+            byteArrayOf(
+                0x00,
+                heartRate.coerceIn(
+                    30,
+                    220
+                ).toByte()
+            )
+
+        return if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.TIRAMISU
+        ) {
+
+            val result =
+                server.notifyCharacteristicChanged(
+                    device,
+                    heartRateCharacteristic,
+                    false,
+                    value
+                )
+
+            result ==
+                    BluetoothStatusCodes.SUCCESS
+
+        } else {
+
+            @Suppress("DEPRECATION")
+            heartRateCharacteristic.value =
+                value
+
+            @Suppress("DEPRECATION")
+            server.notifyCharacteristicChanged(
+                device,
+                heartRateCharacteristic,
+                false
+            )
+        }
     }
 
     private fun startAdvertising() {
@@ -289,6 +563,10 @@ class HeartRateBlePeripheral(
                 )
                 .build()
 
+        /*
+         * Keep the Heart Rate Service in the main
+         * advertisement packet.
+         */
         val advertiseData =
             AdvertiseData.Builder()
                 .addServiceUuid(
@@ -298,6 +576,10 @@ class HeartRateBlePeripheral(
                 )
                 .build()
 
+        /*
+         * Put the phone's Bluetooth device name into
+         * the scan response.
+         */
         val scanResponse =
             AdvertiseData.Builder()
                 .setIncludeDeviceName(true)
@@ -311,50 +593,22 @@ class HeartRateBlePeripheral(
         )
     }
 
-    private fun sendHeartRate(
-        device: BluetoothDevice
-    ) {
-
-        val value =
-            byteArrayOf(
-                0x00,
-                currentHeartRate.toByte()
-            )
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.TIRAMISU
-        ) {
-
-            gattServer?.notifyCharacteristicChanged(
-                device,
-                heartRateCharacteristic,
-                false,
-                value
-            )
-
-        } else {
-
-            @Suppress("DEPRECATION")
-            heartRateCharacteristic.value =
-                value
-
-            @Suppress("DEPRECATION")
-            gattServer?.notifyCharacteristicChanged(
-                device,
-                heartRateCharacteristic,
-                false
-            )
-        }
-    }
-
     fun stop() {
 
         advertiser?.stopAdvertising(
             advertiseCallback
         )
 
-        subscribedDevices.clear()
+        synchronized(notificationLock) {
+
+            subscribedDevices.clear()
+
+            notificationInFlight.clear()
+
+            pendingHeartRates.clear()
+
+            notificationErrorActive = false
+        }
 
         gattServer?.close()
 

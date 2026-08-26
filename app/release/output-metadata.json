@@ -4,15 +4,15 @@
     "type": "APK",
     "kind": "Directory"
   },
-  "applicationId": "com.example.canspebbletonhrbridge",
+  "applicationId": "de.cankoprulu.pebbletonhrbridge",
   "variantName": "release",
   "elements": [
     {
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 3,
-      "versionName": "0.3.0",
+      "versionCode": 4,
+      "versionName": "0.4.0",
       "outputFile": "app-release.apk"
     }
   ],

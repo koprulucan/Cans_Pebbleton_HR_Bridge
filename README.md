@@ -1,185 +1,341 @@
-# Pebble HR Bridge
+Can's Pebbleton HR Bridge
 
-**Pebble HR Bridge** is an Android app that receives live heart-rate data from a Pebble smartwatch and exposes it as a standard Bluetooth Low Energy Heart Rate Service.
+Can's Pebbleton HR Bridge is an Android app that forwards heart-rate data from a Pebble smartwatch to compatible BLE fitness equipment such as a Peloton Bike.
 
-It is designed to let a Pebble act as a heart-rate sensor for devices and apps that can connect to a standard BLE heart-rate monitor.
+The project consists of two parts:
 
-## Support the project
+Can's Pebbleton HR Bridge — Android BLE bridge
 
-Pebble HR Bridge is free to use.
+Can's HR Sender for Pebble — Pebble watch app
 
-This is an independent hobby project and compatibility can vary between
-Pebble models, Android devices and Bluetooth equipment.
+The Pebble watch provides heart-rate data to Android through PebbleKit. The Android app then exposes a standard Bluetooth Low Energy Heart Rate Service so that compatible fitness equipment can connect to it as if it were a regular BLE heart-rate sensor.
 
-If the app works well for you and you'd like to support further development,
-you can buy me a coffee:
+
+Support the project
+
+Can's Pebbleton HR Bridge is free to use.
+
+If you find the project useful and would like to support continued development:
 
 ☕ https://buymeacoffee.com/koprulucan
 
-## Status
 
-**Beta / real-world testing**
+Current versions
 
-The current version is functional and has been tested successfully with:
+Android
 
-- Pebble Time 2
-- Pebble/Core mobile app
-- Pebble HR Sender
-- Android
-- Peloton Bike
-
-More phones, Pebble models, BLE clients, and long-term connection scenarios still need testing.
-
-## How it works
-
-```text
-Pebble watch
-    │
-    │ HealthService
-    ▼
-Pebble HR Sender
-    │
-    │ AppMessage
-    ▼
-Pebble/Core mobile app
-    │
-    │ PebbleKit Android 2
-    ▼
-Pebble HR Bridge
-    │
-    │ Bluetooth LE Heart Rate Service
-    ▼
-Peloton / other BLE HR client
-```
-
-## Features
-
-- Receives live heart-rate data from Pebble HR Sender
-- Uses PebbleKit Android 2
-- Automatically starts the watch app
-- Exposes the standard Bluetooth LE Heart Rate Service
-- Updates the BLE heart-rate value live during transmission
-- Start and stop heart-rate transmission from the Android app
-- End the complete session with one button
-- Automatically closes the watch app when ending a session
-- Standard BLE Heart Rate compatibility
-- Dedicated app icon
-
-## Latest features
-
-### v0.2.0
-
-- Automatically starts the Pebble watch app when Pebble HR Bridge is opened.
-- Added **End session & close** to stop the BLE bridge, close the watch app, and close Pebble HR Bridge in one step.
-- Added a new app icon.
-- Improved the session workflow for faster start and shutdown.
-
-## Requirements
-
-- Android phone with Bluetooth Low Energy peripheral/advertising support
-- Pebble/Core mobile app
-- compatible Pebble connected to the phone
-- Pebble HR Sender installed and running on the watch
-
-The current beta has been tested with a **Pebble Time 2**.
-
-## Installation
-
-Download the latest APK from the repository's **Releases** page and install it on the Android phone connected to your Pebble.
-
-Because this beta is distributed outside the Play Store, Android may ask you to allow installation from the app you used to open the APK.
-
-## Usage
-
-1. Connect the Pebble to the Pebble/Core mobile app.
-2. Open **Pebble HR Sender** on the watch.
-3. Wait until the watch shows a valid heart rate and `Phone: connected`.
-4. Open **Pebble HR Bridge** on Android.
-5. Confirm that the live Pebble heart rate appears.
-6. Tap **Start heart rate transmission**.
-7. On the target device or app, search for Bluetooth heart-rate sensors.
-8. Connect to the heart-rate service exposed by the Android phone.
-
-## Bluetooth implementation
-
-Pebble HR Bridge acts as a Bluetooth LE GATT server and exposes the standard Bluetooth Heart Rate Service.
-
-```text
-Heart Rate Service:     0x180D
-Heart Rate Measurement: 0x2A37
-```
-
-## Pebble communication
-
-Watch-app UUID:
-
-```text
-49b5977c-c9d1-4819-9410-0b7c2a9716f9
-```
-
-Heart-rate message:
-
-```text
-Message key: HEART_RATE
-Numeric key: 10000
-Type: Int32
-```
+Can's Pebbleton HR Bridge v0.4.0
 
 Android application ID:
 
-```text
+de.cankoprulu.pebbletonhrbridge
+
+Beginning with v0.4.0, the Android package/application ID was changed from:
+
 com.example.canspebbletonhrbridge
-```
 
-Do not change these identifiers independently unless you also update the corresponding watch app.
+to:
 
-## Building from source
+de.cankoprulu.pebbletonhrbridge
 
-Open the project in Android Studio and build normally.
+This change gives the project a unique, publication-ready Android application ID and avoids conflicts with the previous com.example namespace.
 
-For a release APK:
+Because Android identifies applications by their application ID, v0.4.0 is treated as a different Android application from builds using the old package ID. Older beta builds may therefore coexist with v0.4.0 instead of being updated in place.
 
-1. Open **Build**
-2. Choose **Generate Signed App Bundle / APK**
-3. Select **APK**
-4. Sign with your release keystore
-5. Build the release variant
+Pebble
 
-Keep the signing keystore safe. Future updates must be signed consistently if they are intended to update an already installed build.
+Can's HR Sender for Pebble v0.2.0
 
-## Privacy
+The Pebble watch-app UUID remains:
 
-Heart-rate forwarding happens locally:
+49b5977c-c9d1-4819-9410-0b7c2a9716f9
 
-```text
-Pebble → phone → Bluetooth LE client
-```
+The AppMessage heart-rate key remains:
 
-Pebble HR Bridge does not need to upload heart-rate data to a cloud service in order to perform the bridge function.
+10000
 
-## Known limitations
+The Pebble companion-app metadata must eventually reference the new Android package ID before normal Pebble-to-Android communication is expected to work with the newly packaged Android app.
 
-This is an early beta. Areas that still need wider real-world testing include:
+How it works
 
-- background behavior on different Android manufacturers
-- reconnection after Bluetooth interruptions
-- long workouts
-- stale heart-rate handling after an unexpected disconnect
-- multiple BLE clients
-- additional Pebble models
-- additional fitness equipment and apps
+Pebble smartwatch
+↓
+Can's HR Sender for Pebble
+↓
+PebbleKit Android
+↓
+PebbleListenerService
+↓
+HeartRateState
+↓
+HrBridgeService
+↓
+HeartRateBlePeripheral
+↓
+Bluetooth LE Heart Rate Service
+↓
+Peloton / compatible BLE client
 
-## Feedback
+Main features
 
-Bug reports and real-world test results are welcome through GitHub Issues.
+Receives heart-rate data from a Pebble smartwatch.
 
-Please include:
+Uses PebbleKit Android 2 for watch-to-phone communication.
 
-- Pebble model
-- Pebble firmware version
-- Android phone model
-- Android version
-- Pebble/Core app version
-- target BLE device or app
-- expected behavior
-- actual behavior
+Exposes the standard Bluetooth LE Heart Rate Service.
+
+Advertises as a BLE heart-rate peripheral.
+
+Supports BLE Heart Rate Measurement notifications.
+
+Designed for use with Peloton Bike and similar BLE heart-rate clients.
+
+Runs BLE transmission in a foreground service.
+
+BLE transmission continues when the Android Activity is no longer visible.
+
+Keeps the BLE GATT server independent from the Activity lifecycle.
+
+Sends heart-rate keepalive updates approximately once per second.
+
+Reuses the last valid heart-rate value for up to 10 seconds during short Pebble data interruptions.
+
+Keeps the BLE connection open if fresh heart-rate data temporarily stops.
+
+Automatically resumes heart-rate transmission when fresh Pebble data returns.
+
+Uses latest-value BLE notification queuing instead of building up stale heart-rate notifications.
+
+Handles Android 12+ Bluetooth runtime permissions.
+
+Supports the connected-device foreground-service type on modern Android versions.
+
+BLE implementation
+
+The Android app exposes the standard Bluetooth SIG Heart Rate Service.
+
+Heart Rate Service
+
+UUID: 0000180d-0000-1000-8000-00805f9b34fb
+
+Heart Rate Measurement characteristic
+
+UUID: 00002a37-0000-1000-8000-00805f9b34fb
+
+The characteristic uses BLE notifications.
+
+Client Characteristic Configuration Descriptor
+
+UUID: 00002902-0000-1000-8000-00805f9b34fb
+
+The connected BLE client enables notifications through the CCCD.
+
+Heart-rate handling
+
+Heart-rate values accepted by the Android bridge are currently limited to:
+
+30–220 BPM
+
+Every valid Pebble heart-rate message refreshes the internal last-update timestamp, even when the BPM value is identical to the previous value.
+
+This is important because a state-based UI stream may not emit repeated identical values, while the bridge still needs to know that the Pebble is actively supplying fresh measurements.
+
+During an active BLE session:
+
+A new heart-rate value is forwarded immediately.
+
+A keepalive loop runs approximately once per second.
+
+If Pebble data temporarily stops, the last valid BPM may continue to be sent for up to 10 seconds.
+
+After more than 10 seconds without a fresh Pebble message, no further heart-rate notifications are sent.
+
+The BLE GATT connection itself is intentionally kept open.
+
+When fresh Pebble data returns, heart-rate notifications resume automatically.
+
+A missing heart-rate value is never encoded as a fake BPM value.
+
+Android background operation
+
+Starting with v0.4.0, BLE transmission is owned by HrBridgeService, not by MainActivity.
+
+This avoids terminating the BLE peripheral simply because:
+
+the display turns off,
+
+Android recreates the Activity,
+
+the user temporarily leaves the app,
+
+or the Activity lifecycle changes during a workout.
+
+HrBridgeService runs as a connected-device foreground service while transmission is active.
+
+Session behavior
+
+When the app is opened, it can start the Pebble watch app automatically.
+
+The normal workflow is:
+
+Open Can's Pebbleton HR Bridge.
+
+Wait until a valid Pebble heart-rate value is shown.
+
+Start heart-rate transmission.
+
+Connect the Peloton or another BLE client.
+
+Leave the bridge running during the workout.
+
+Use End session & close when the session is finished.
+
+A full session end resets the current heart rate, the last known heart rate and its timestamp.
+
+Package migration in v0.4.0
+
+The Android application ID changed in v0.4.0.
+
+Old:
+
+com.example.canspebbletonhrbridge
+
+New:
+
+de.cankoprulu.pebbletonhrbridge
+
+The Kotlin namespace was migrated to the same value:
+
+de.cankoprulu.pebbletonhrbridge
+
+The source packages now use:
+
+package de.cankoprulu.pebbletonhrbridge
+
+and the Compose theme package uses:
+
+package de.cankoprulu.pebbletonhrbridge.ui.theme
+
+The visible application name remains:
+
+Can's Pebbleton HR Bridge
+
+The Pebble watch-app UUID and AppMessage key were not changed by this Android package migration.
+
+Compatibility
+
+Current development setup:
+
+Pebble Time 2
+
+Can's HR Sender for Pebble v0.2.0
+
+Pebble/Core mobile environment on Android
+
+Can's Pebbleton HR Bridge v0.4.0
+
+Peloton Bike
+
+Compatibility with other BLE Heart Rate Service clients may work but is not yet guaranteed.
+
+Communication identifiers
+
+Android application ID
+
+de.cankoprulu.pebbletonhrbridge
+
+Previous Android application ID
+
+com.example.canspebbletonhrbridge
+
+Pebble watch-app UUID
+
+49b5977c-c9d1-4819-9410-0b7c2a9716f9
+
+Pebble AppMessage heart-rate key
+
+10000
+
+Latest features
+
+v0.4.0
+
+Moved BLE GATT peripheral ownership from MainActivity to HrBridgeService.
+
+Added a connected-device foreground service for more reliable background operation.
+
+Added approximately 1 Hz heart-rate keepalive transmission.
+
+Added a 10-second grace period using the most recent valid Pebble heart rate.
+
+BLE connection is no longer intentionally closed when the Pebble value temporarily becomes unavailable.
+
+Added automatic resume when fresh Pebble heart-rate data returns.
+
+Improved cleanup of asynchronous BLE callbacks.
+
+Improved BLE advertising and GATT-server lifecycle handling.
+
+Added explicit session reset behavior.
+
+Changed Android application ID from com.example.canspebbletonhrbridge to de.cankoprulu.pebbletonhrbridge.
+
+Migrated Kotlin namespace and source packages to de.cankoprulu.pebbletonhrbridge.
+
+Standardized the Android app name as Can's Pebbleton HR Bridge.
+
+v0.3.0
+
+Improved BLE heart-rate sending efficiency.
+
+Reduced unnecessary BLE notification work.
+
+Added latest-value notification queuing.
+
+Improved behavior when heart-rate values change faster than BLE notifications can complete.
+
+Improved long-session BLE notification handling.
+
+v0.2.0
+
+Improved Android/Pebble workflow.
+
+Added support for starting the Pebble watch app from the Android companion workflow.
+
+Continued development of Peloton-compatible BLE heart-rate forwarding.
+
+Build
+
+The Android project uses Gradle with Kotlin DSL.
+
+Current Android configuration includes:
+
+minSdk: 26
+targetSdk: 37
+compileSdk: 37
+versionName: 0.4.0
+versionCode: 4
+
+The current Android application ID is:
+
+de.cankoprulu.pebbletonhrbridge
+
+Privacy
+
+Can's Pebbleton HR Bridge is designed to process heart-rate data locally between the Pebble smartwatch, the Android device and the connected BLE fitness device.
+
+The bridge does not require a cloud service for normal heart-rate forwarding.
+
+Beta status
+
+This project is still under active development and should currently be considered beta software.
+
+Long-duration workout stability, device compatibility and Android background behavior continue to be tested.
+
+Support the project
+
+Can's Pebbleton HR Bridge is free to use.
+
+If you find the project useful and would like to support continued development:
+
+☕ https://buymeacoffee.com/koprulucan

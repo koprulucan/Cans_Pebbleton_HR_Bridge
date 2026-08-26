@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Bluetooth für Android 11 und älter -->
+
+    <!-- =========================================================
+         Bluetooth für Android 11 und älter
+         ========================================================= -->
+
     <uses-permission
         android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
@@ -10,14 +15,44 @@
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
-    <!-- Bluetooth für Android 12 und neuer -->
+
+    <!-- =========================================================
+         Bluetooth für Android 12 und neuer
+         ========================================================= -->
+
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Unser Handy muss Bluetooth Low Energy unterstützen -->
+
+    <!-- =========================================================
+         Foreground Service
+
+         Hält die BLE-Herzfrequenzübertragung auch bei
+         ausgeschaltetem Display oder App im Hintergrund aktiv.
+         ========================================================= -->
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+
+    <!-- =========================================================
+         Benachrichtigungen
+         ========================================================= -->
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+
+    <!-- =========================================================
+         Hardware-Anforderung
+         ========================================================= -->
+
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
+
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -27,28 +62,64 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.CansPebbletonHRBridge">
+
+
+        <!-- =====================================================
+             Haupt-App
+             ===================================================== -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.CansPebbletonHRBridge"
             android:windowSoftInputMode="adjustResize">
+
             <intent-filter>
+
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+
             </intent-filter>
+
         </activity>
+
+
+        <!-- =====================================================
+             PebbleKit Listener
+
+             PebbleKit Android 2 benötigt diesen Service exportiert,
+             damit die Pebble/Core-App ihn binden kann.
+
+             ExportedService wird hier bewusst unterdrückt.
+             ===================================================== -->
+
         <service
             android:name=".PebbleListenerService"
-            android:exported="true">
+            android:exported="true"
+            tools:ignore="ExportedService">
 
             <intent-filter>
+
                 <action
                     android:name="io.rebble.pebblekit2.RECEIVE_DATA_FROM_WATCH" />
+
             </intent-filter>
 
         </service>
+
+
+        <!-- =====================================================
+             Heart Rate Bridge Foreground Service
+             ===================================================== -->
+
+        <service
+            android:name=".HrBridgeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false" />
+
+
     </application>
 
 </manifest>

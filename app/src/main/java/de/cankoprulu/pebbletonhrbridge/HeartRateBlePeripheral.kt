@@ -758,7 +758,7 @@ class HeartRateBlePeripheral(
                 )
 
             } catch (
-                e: SecurityException
+                _: SecurityException
             ) {
 
                 active = false
@@ -838,7 +838,7 @@ class HeartRateBlePeripheral(
                     ) == true
 
             } catch (
-                e: SecurityException
+                _: SecurityException
             ) {
 
                 false
@@ -922,16 +922,6 @@ class HeartRateBlePeripheral(
             )
         }
     }
-
-
-    /*
-     * =========================================================
-     * Aktuellen Betriebszustand abfragen
-     * =========================================================
-     */
-
-    fun isActive(): Boolean =
-        active
 
 
     /*
@@ -1161,13 +1151,13 @@ class HeartRateBlePeripheral(
             }
 
         } catch (
-            e: SecurityException
+            _: SecurityException
         ) {
 
             false
 
         } catch (
-            e: IllegalArgumentException
+            _: IllegalArgumentException
         ) {
 
             false
@@ -1277,7 +1267,7 @@ class HeartRateBlePeripheral(
                 )
 
         } catch (
-            e: SecurityException
+            _: SecurityException
         ) {
 
             active = false
@@ -1300,7 +1290,7 @@ class HeartRateBlePeripheral(
             )
 
         } catch (
-            e: IllegalStateException
+            _: IllegalStateException
         ) {
 
             active = false

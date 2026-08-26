@@ -3,6 +3,8 @@ package de.cankoprulu.pebbletonhrbridge
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -11,25 +13,38 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
+import de.cankoprulu.pebbletonhrbridge.ui.theme.CansPebbletonHRBridgeTheme
 import io.rebble.pebblekit2.client.DefaultPebbleSender
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -64,13 +79,8 @@ class MainActivity : ComponentActivity() {
      * =========================================================
      * Permission Launcher
      * =========================================================
-     *
-     * Bluetooth-Berechtigungen sind für die eigentliche
-     * Bridge-Funktion notwendig.
-     *
-     * POST_NOTIFICATIONS ist dagegen nicht Voraussetzung dafür,
-     * dass der Foreground Service technisch laufen darf.
      */
+
     private val permissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
@@ -125,9 +135,6 @@ class MainActivity : ComponentActivity() {
         /*
          * Wenn bereits eine Übertragung läuft, starten wir die
          * Pebble-App NICHT erneut.
-         *
-         * Das ist besonders wichtig, wenn Android lediglich die
-         * MainActivity neu erstellt hat.
          */
         if (!HrBridgeService.running.value) {
             startWatchApp()
@@ -135,14 +142,7 @@ class MainActivity : ComponentActivity() {
 
 
         /*
-         * =====================================================
-         * Pebble-Herzfrequenz für die UI beobachten
-         * =====================================================
-         *
-         * Die Herzfrequenz wird hier NICHT direkt an BLE
-         * weitergereicht.
-         *
-         * Das übernimmt HrBridgeService.
+         * Pebble-Herzfrequenz für die UI beobachten.
          */
         lifecycleScope.launch {
 
@@ -157,13 +157,7 @@ class MainActivity : ComponentActivity() {
 
 
         /*
-         * =====================================================
-         * Zustand des Foreground Service beobachten
-         * =====================================================
-         *
-         * Dadurch kann die Activity verschwinden und später
-         * neu erstellt werden, ohne dass die UI fälschlich
-         * wieder einen neuen Start anbietet.
+         * Zustand des Foreground Service beobachten.
          */
         lifecycleScope.launch {
 
@@ -178,9 +172,7 @@ class MainActivity : ComponentActivity() {
 
 
         /*
-         * =====================================================
-         * Statusmeldungen vom HrBridgeService beobachten
-         * =====================================================
+         * Statusmeldungen vom HrBridgeService beobachten.
          */
         lifecycleScope.launch {
 
@@ -199,9 +191,10 @@ class MainActivity : ComponentActivity() {
          * Compose UI
          * =====================================================
          */
+
         setContent {
 
-            MaterialTheme {
+            CansPebbletonHRBridgeTheme {
 
                 Surface(
                     modifier =
@@ -254,15 +247,9 @@ class MainActivity : ComponentActivity() {
             "Ending session..."
 
 
-        /*
-         * Zuerst die Android-BLE-Bridge stoppen.
-         */
         stopTransmission()
 
 
-        /*
-         * Danach die Pebble-App beenden.
-         */
         lifecycleScope.launch {
 
             try {
@@ -274,15 +261,7 @@ class MainActivity : ComponentActivity() {
 
             } finally {
 
-                /*
-                 * Vollständiger Reset:
-                 *
-                 * - aktueller Wert
-                 * - letzter bekannter Wert
-                 * - letzter Update-Zeitstempel
-                 */
                 HeartRateState.reset()
-
 
                 finishAndRemoveTask()
             }
@@ -322,8 +301,6 @@ class MainActivity : ComponentActivity() {
 
         /*
          * Android 12+
-         *
-         * Bluetooth Runtime Permissions
          */
         if (
             Build.VERSION.SDK_INT >=
@@ -359,11 +336,6 @@ class MainActivity : ComponentActivity() {
 
         /*
          * Android 13+
-         *
-         * Benachrichtigungsberechtigung für die sichtbare
-         * Foreground-Service-Benachrichtigung.
-         *
-         * Eine Ablehnung blockiert die BLE-Funktion nicht.
          */
         if (
             Build.VERSION.SDK_INT >=
@@ -384,10 +356,6 @@ class MainActivity : ComponentActivity() {
         }
 
 
-        /*
-         * Bluetooth-Status unabhängig von der
-         * Notification-Permission bestimmen.
-         */
         bluetoothReady =
             hasBluetoothPermissions()
 
@@ -483,10 +451,6 @@ class MainActivity : ComponentActivity() {
      * =========================================================
      * Übertragung starten
      * =========================================================
-     *
-     * Hier wird KEIN HeartRateBlePeripheral erzeugt.
-     *
-     * Wir starten lediglich den Foreground Service.
      */
 
     private fun startTransmission() {
@@ -535,13 +499,6 @@ class MainActivity : ComponentActivity() {
 
         try {
 
-            /*
-             * Der Foreground Service wird gestartet, während
-             * die Activity sichtbar ist.
-             *
-             * HrBridgeService ruft danach selbst
-             * startForeground() auf.
-             */
             ContextCompat.startForegroundService(
                 this,
                 intent
@@ -584,15 +541,6 @@ class MainActivity : ComponentActivity() {
 
         try {
 
-            /*
-             * Der bereits laufende Service erhält das
-             * Stop-Kommando und kann:
-             *
-             * - Advertising stoppen
-             * - GATT Server schließen
-             * - Foreground Notification entfernen
-             * - sich selbst beenden
-             */
             startService(
                 intent
             )
@@ -613,12 +561,6 @@ class MainActivity : ComponentActivity() {
      * =========================================================
      * Activity wird zerstört
      * =========================================================
-     *
-     * ABSICHTLICH KEIN:
-     *
-     * heartRatePeripheral?.stop()
-     * stopTransmission()
-     * stopService(...)
      *
      * Die BLE-Übertragung gehört HrBridgeService und muss
      * weiterlaufen, wenn die Activity verschwindet.
@@ -651,120 +593,403 @@ fun HeartRateScreen(
     onExit: () -> Unit
 ) {
 
-    Column(
+    var showPrivacyPolicy
+            by remember {
+                mutableStateOf(false)
+            }
+
+
+    Box(
         modifier =
-            Modifier.fillMaxSize(),
-
-        verticalArrangement =
-            Arrangement.Center,
-
-        horizontalAlignment =
-            Alignment.CenterHorizontally
+            Modifier.fillMaxSize()
     ) {
 
-        Text(
-            "Can's Pebbleton HR Bridge"
-        )
-
-
-        Text(
-            if (heartRate != null) {
-
-                "Pebble heart rate: $heartRate BPM"
-
-            } else {
-
-                "Pebble heart rate: -- BPM"
-            }
-        )
-
-
-        Text(
-            if (bluetoothReady) {
-
-                "Bluetooth: ready"
-
-            } else {
-
-                "Bluetooth permission required"
-            }
-        )
-
-
-        Text(
-            if (advertisingSupported) {
-
-                "BLE advertising: ready"
-
-            } else {
-
-                "BLE advertising: unavailable"
-            }
-        )
-
-
-        Text(
-            "Status: $status"
-        )
-
-
-        Button(
+        /*
+         * =====================================================
+         * Hauptfunktionen
+         * =====================================================
+         *
+         * Bewusst zentral und klar voneinander getrennt von
+         * sekundären Informationen wie der Privacy Policy.
+         */
+        Column(
             modifier =
-                Modifier.fillMaxWidth(0.85f),
+                Modifier
+                    .align(
+                        Alignment.Center
+                    )
+                    .fillMaxWidth(),
 
-            enabled =
-                transmitting ||
-                        (
-                                bluetoothReady &&
-                                        advertisingSupported &&
-                                        heartRate != null
-                                ),
+            verticalArrangement =
+                Arrangement.Center,
 
-            onClick = {
-
-                if (transmitting) {
-
-                    onStop()
-
-                } else {
-
-                    onStart()
-                }
-            }
+            horizontalAlignment =
+                Alignment.CenterHorizontally
         ) {
 
             Text(
-                if (transmitting) {
+                "Can's Pebbleton HR Bridge"
+            )
 
-                    "Stop transmission"
+
+            Text(
+                if (heartRate != null) {
+
+                    "Pebble heart rate: $heartRate BPM"
 
                 } else {
 
-                    "Start heart rate transmission"
+                    "Pebble heart rate: -- BPM"
                 }
             )
+
+
+            Text(
+                if (bluetoothReady) {
+
+                    "Bluetooth: ready"
+
+                } else {
+
+                    "Bluetooth permission required"
+                }
+            )
+
+
+            Text(
+                if (advertisingSupported) {
+
+                    "BLE advertising: ready"
+
+                } else {
+
+                    "BLE advertising: unavailable"
+                }
+            )
+
+
+            Text(
+                "Status: $status"
+            )
+
+
+            Button(
+                modifier =
+                    Modifier.fillMaxWidth(0.85f),
+
+                enabled =
+                    transmitting ||
+                            (
+                                    bluetoothReady &&
+                                            advertisingSupported &&
+                                            heartRate != null
+                                    ),
+
+                onClick = {
+
+                    if (transmitting) {
+
+                        onStop()
+
+                    } else {
+
+                        onStart()
+                    }
+                }
+            ) {
+
+                Text(
+                    if (transmitting) {
+
+                        "Stop transmission"
+
+                    } else {
+
+                        "Start heart rate transmission"
+                    }
+                )
+            }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(12.dp)
+            )
+
+
+            OutlinedButton(
+                modifier =
+                    Modifier.fillMaxWidth(0.85f),
+
+                onClick = {
+                    onExit()
+                }
+            ) {
+
+                Text(
+                    "End session & close"
+                )
+            }
         }
 
 
-        Spacer(
+        /*
+         * =====================================================
+         * Sekundäre Funktion: Privacy Policy
+         * =====================================================
+         *
+         * Kleiner TextButton oben rechts.
+         *
+         * WindowInsets.statusBars sorgt dafür, dass der Button
+         * unterhalb der Android-Statusleiste bleibt und nicht vom
+         * System-UI verdeckt wird.
+         */
+        TextButton(
             modifier =
-                Modifier.height(12.dp)
-        )
-
-
-        OutlinedButton(
-            modifier =
-                Modifier.fillMaxWidth(0.85f),
+                Modifier
+                    .align(
+                        Alignment.TopEnd
+                    )
+                    .windowInsetsPadding(
+                        WindowInsets.statusBars
+                    )
+                    .padding(
+                        end = 12.dp,
+                        top = 4.dp
+                    ),
 
             onClick = {
-
-                onExit()
+                showPrivacyPolicy = true
             }
         ) {
 
             Text(
-                "End session & close"
+                "Privacy Policy"
             )
         }
     }
+
+
+    if (showPrivacyPolicy) {
+
+        PrivacyPolicyDialog(
+            onDismiss = {
+                showPrivacyPolicy = false
+            }
+        )
+    }
 }
+
+
+/*
+ * =============================================================
+ * Privacy Policy
+ * =============================================================
+ */
+
+@Composable
+private fun PrivacyPolicyDialog(
+    onDismiss: () -> Unit
+) {
+
+    val context =
+        LocalContext.current
+
+
+    AlertDialog(
+        onDismissRequest =
+            onDismiss,
+
+        title = {
+
+            Text(
+                "Privacy Policy"
+            )
+        },
+
+        text = {
+
+            Column(
+                modifier =
+                    Modifier
+                        .heightIn(
+                            max = 520.dp
+                        )
+                        .verticalScroll(
+                            rememberScrollState()
+                        )
+            ) {
+
+                Text(
+                    PRIVACY_POLICY_TEXT
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.height(24.dp)
+                )
+
+
+                Text(
+                    "Support the project"
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.height(6.dp)
+                )
+
+
+                Text(
+                    "Can's Pebbleton HR Bridge is free to use. " +
+                            "If you find the project useful and would like " +
+                            "to support continued development:"
+                )
+
+
+                TextButton(
+                    onClick = {
+                        openBuyMeACoffee(
+                            context
+                        )
+                    }
+                ) {
+
+                    Text(
+                        "☕ Buy me a coffee"
+                    )
+                }
+            }
+        },
+
+        confirmButton = {
+
+            TextButton(
+                onClick =
+                    onDismiss
+            ) {
+
+                Text(
+                    "Close"
+                )
+            }
+        }
+    )
+}
+
+
+/*
+ * =============================================================
+ * Buy Me a Coffee
+ * =============================================================
+ */
+
+private fun openBuyMeACoffee(
+    context: Context
+) {
+
+    val uri =
+        BUY_ME_A_COFFEE_URL.toUri()
+
+
+    /*
+     * Gewünscht ist ausdrücklich Chrome.
+     *
+     * Falls Chrome auf einem Gerät nicht installiert ist,
+     * fällt die App automatisch auf den Standardbrowser zurück.
+     */
+    val chromeIntent =
+        Intent(
+            Intent.ACTION_VIEW,
+            uri
+        ).apply {
+
+            setPackage(
+                "com.android.chrome"
+            )
+        }
+
+
+    try {
+
+        context.startActivity(
+            chromeIntent
+        )
+
+    } catch (
+        _: ActivityNotFoundException
+    ) {
+
+        val browserIntent =
+            Intent(
+                Intent.ACTION_VIEW,
+                uri
+            )
+
+        context.startActivity(
+            browserIntent
+        )
+    }
+}
+
+
+private const val BUY_ME_A_COFFEE_URL =
+    "https://buymeacoffee.com/koprulucan"
+
+
+private const val PRIVACY_POLICY_TEXT =
+    """Can's Pebbleton HR Bridge – Privacy Policy
+
+Last updated: August 26, 2026
+
+Can's Pebbleton HR Bridge is an Android application that receives heart-rate data from a compatible Pebble smartwatch and forwards that data to a Bluetooth Low Energy heart-rate client selected by the user, such as compatible fitness equipment.
+
+Data accessed and used
+
+The app accesses heart-rate measurements received from the Pebble watch through the Pebble/Core and PebbleKit environment.
+
+The heart-rate data is used only to:
+
+• display the current heart rate in the Android app;
+• provide the app's Bluetooth Low Energy Heart Rate Service; and
+• forward heart-rate measurements to a BLE client connected by the user.
+
+Data sharing
+
+Heart-rate measurements are transmitted over Bluetooth Low Energy to the BLE client that the user chooses to connect to the app.
+
+Can's Pebbleton HR Bridge does not sell heart-rate data.
+
+The app does not include advertising or analytics SDKs and does not send heart-rate measurements to a developer-operated cloud service.
+
+Data storage and retention
+
+Heart-rate measurements are not stored in a persistent database by Can's Pebbleton HR Bridge.
+
+The current and most recently received heart-rate values may exist temporarily in the app's process memory while a session is active. A recent value may be reused briefly during a short interruption in Pebble data in order to maintain BLE heart-rate transmission.
+
+Using "End session & close" clears the app's in-memory heart-rate session state.
+
+Permissions
+
+Bluetooth permissions are used to advertise and operate the Bluetooth Low Energy Heart Rate Service and to communicate with compatible Bluetooth devices.
+
+Notification permission, where requested by Android, is used for the foreground-service notification that keeps heart-rate transmission active during a workout.
+
+No user account
+
+Can's Pebbleton HR Bridge does not provide or require a user account.
+
+Security
+
+Heart-rate processing performed by Can's Pebbleton HR Bridge is local to the Android device, except for the intended Bluetooth transmission to the connected BLE client.
+
+Deletion
+
+Because the app does not persistently store heart-rate measurements in its own database, there is no stored heart-rate history to delete from the app. Ending the session clears the in-memory heart-rate state. Uninstalling the app removes its local application data.
+
+Contact
+
+For privacy questions regarding Can's Pebbleton HR Bridge, use the developer contact information published with the app's Google Play listing."""

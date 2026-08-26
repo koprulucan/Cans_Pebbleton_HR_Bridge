@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 
 class HrBridgeService : Service() {
@@ -268,7 +269,7 @@ class HrBridgeService : Service() {
             while (isActive) {
 
                 delay(
-                    KEEPALIVE_INTERVAL_MS
+                    KEEPALIVE_INTERVAL_MS.milliseconds
                 )
 
 
@@ -319,9 +320,7 @@ class HrBridgeService : Service() {
                     false
 
 
-                stopBridge(
-                    finalStatus = "Stopped"
-                )
+                stopBridge()
 
 
                 stopForegroundService()
@@ -719,9 +718,7 @@ class HrBridgeService : Service() {
      * =========================================================
      */
 
-    private fun stopBridge(
-        finalStatus: String? = null
-    ) {
+    private fun stopBridge() {
 
 
         heartRatePeripheral
@@ -740,11 +737,8 @@ class HrBridgeService : Service() {
             0L
 
 
-        if (finalStatus != null) {
-
-            _status.value =
-                finalStatus
-        }
+        _status.value =
+            "Stopped"
     }
 
 
@@ -844,7 +838,7 @@ class HrBridgeService : Service() {
             true
 
         } catch (
-            e: SecurityException
+            _: SecurityException
         ) {
 
             _status.value =
@@ -875,15 +869,6 @@ class HrBridgeService : Service() {
      */
 
     private fun createNotificationChannel() {
-
-
-        if (
-            Build.VERSION.SDK_INT <
-            Build.VERSION_CODES.O
-        ) {
-
-            return
-        }
 
 
         val channel =
@@ -918,7 +903,6 @@ class HrBridgeService : Service() {
      * =========================================================
      */
 
-    @Suppress("DEPRECATION")
     private fun stopForegroundService() {
 
 
@@ -927,21 +911,9 @@ class HrBridgeService : Service() {
         }
 
 
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.N
-        ) {
-
-            stopForeground(
-                STOP_FOREGROUND_REMOVE
-            )
-
-        } else {
-
-            stopForeground(
-                true
-            )
-        }
+        stopForeground(
+            STOP_FOREGROUND_REMOVE
+        )
 
 
         foregroundStarted =

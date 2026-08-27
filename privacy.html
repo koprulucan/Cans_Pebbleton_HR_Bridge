@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Privacy Policy — Can's Pebbleton HR Bridge</title>
+  <meta name="description" content="Privacy Policy for Can's Pebbleton HR Bridge.">
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+    main {
+      width: min(860px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 48px 0 64px;
+    }
+    h1 {
+      margin-top: 0;
+      line-height: 1.2;
+    }
+    h2 {
+      margin-top: 2rem;
+      line-height: 1.3;
+    }
+    p, li {
+      max-width: 75ch;
+    }
+    .updated {
+      margin-bottom: 2rem;
+      opacity: 0.75;
+    }
+    a {
+      color: LinkText;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+        "Liberation Mono", monospace;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Privacy Policy — Can's Pebbleton HR Bridge</h1>
+    <p class="updated"><strong>Last updated: August 26, 2026</strong></p>
+
+    <h2>Overview</h2>
+    <p><strong>Can's Pebbleton HR Bridge</strong> is an Android application that receives heart-rate data from a compatible Pebble smartwatch and forwards that data to a Bluetooth Low Energy heart-rate client selected by the user, such as compatible fitness equipment.</p>
+    <p>This Privacy Policy explains what data the app accesses, how that data is used, how long it is retained, and when it is shared.</p>
+
+    <h2>Data accessed and used</h2>
+    <p>The app accesses heart-rate measurements received from the Pebble watch through the Pebble/Core and PebbleKit environment.</p>
+    <p>Heart-rate data is used only to:</p>
+    <ul>
+      <li>display the current heart rate in the Android app;</li>
+      <li>provide the app's Bluetooth Low Energy Heart Rate Service; and</li>
+      <li>forward heart-rate measurements to a BLE client connected by the user.</li>
+    </ul>
+
+    <h2>Health and fitness data</h2>
+    <p>Heart-rate measurements are health and fitness data.</p>
+    <p>Can's Pebbleton HR Bridge processes these measurements only for the user-requested heart-rate bridge functionality described above.</p>
+    <p>The app does not use heart-rate measurements for advertising, profiling, marketing or analytics.</p>
+
+    <h2>Data sharing</h2>
+    <p>Heart-rate measurements are transmitted over Bluetooth Low Energy to the BLE client that the user chooses to connect to the app.</p>
+    <p>This Bluetooth transmission is a core feature of the app.</p>
+    <p>Can's Pebbleton HR Bridge does not sell heart-rate data.</p>
+    <p>The app does not include advertising or analytics SDKs and does not send heart-rate measurements to a developer-operated cloud service.</p>
+
+    <h2>Data storage and retention</h2>
+    <p>Heart-rate measurements are not stored in a persistent database by Can's Pebbleton HR Bridge.</p>
+    <p>The current and most recently received heart-rate values may exist temporarily in the app's process memory while a session is active.</p>
+    <p>A recent value may be reused briefly during a short interruption in Pebble data in order to maintain heart-rate transmission. The current implementation may reuse the most recent valid measurement for up to 10 seconds after the latest real Pebble message.</p>
+    <p>After that grace period, the app stops sending heart-rate notifications until fresh Pebble data becomes available again.</p>
+    <p>Using <strong>End session &amp; close</strong> clears the app's in-memory heart-rate session state.</p>
+
+    <h2>Bluetooth permissions</h2>
+    <p>Bluetooth permissions are used to:</p>
+    <ul>
+      <li>advertise the Android device as a BLE heart-rate peripheral;</li>
+      <li>operate the Bluetooth Low Energy Heart Rate Service;</li>
+      <li>accept a connection from a compatible BLE client; and</li>
+      <li>transmit heart-rate measurements to the connected BLE client.</li>
+    </ul>
+
+    <h2>Notification permission</h2>
+    <p>On Android versions where notification permission is requested, it is used for the foreground-service notification that keeps active BLE heart-rate transmission running during a workout.</p>
+
+    <h2>Foreground service</h2>
+    <p>During an active heart-rate transmission session, the app may run a foreground service of type <code>connectedDevice</code>.</p>
+    <p>This service keeps the BLE heart-rate bridge active when the app's main screen is not visible or the phone display is turned off.</p>
+
+    <h2>No user account</h2>
+    <p>Can's Pebbleton HR Bridge does not provide or require a user account.</p>
+
+    <h2>No advertising or analytics</h2>
+    <p>The app does not include advertising SDKs.</p>
+    <p>The app does not include analytics SDKs.</p>
+    <p>The app does not use heart-rate data for targeted advertising, profiling or marketing.</p>
+
+    <h2>Security</h2>
+    <p>Heart-rate processing performed by Can's Pebbleton HR Bridge is local to the Android device, except for the intended Bluetooth Low Energy transmission to the BLE client selected by the user.</p>
+    <p>Users should connect only to BLE devices they trust.</p>
+
+    <h2>Data deletion</h2>
+    <p>Because the app does not persistently store heart-rate measurements in its own database, there is no stored heart-rate history to request from the developer or delete from a developer-operated server.</p>
+    <p>Using <strong>End session &amp; close</strong> clears the current in-memory heart-rate session state.</p>
+    <p>Uninstalling the app removes its local application data from the Android device according to normal Android behavior.</p>
+
+    <h2>Third-party components</h2>
+    <p>The app uses PebbleKit Android 2 and depends on the Pebble/Core environment to receive data from the Pebble watch.</p>
+    <p>Those components and applications may have their own privacy practices and policies.</p>
+    <p>Can's Pebbleton HR Bridge does not control the data practices of independent third-party applications or devices.</p>
+
+    <h2>Children's privacy</h2>
+    <p>Can's Pebbleton HR Bridge is not designed to collect personal information from children and does not provide social, account or advertising features directed at children.</p>
+
+    <h2>Changes to this Privacy Policy</h2>
+    <p>This Privacy Policy may be updated when app functionality or data-handling behavior changes.</p>
+    <p>The latest version should be made available with the project and through the application's distribution listing.</p>
+
+    <h2>Contact</h2>
+    <p>For privacy questions regarding <strong>Can's Pebbleton HR Bridge</strong>, use the developer contact information published with the application's Google Play listing.</p>
+
+    <h2>Project support</h2>
+    <p>Can's Pebbleton HR Bridge is free to use.</p>
+    <p>If you find the project useful and would like to support continued development:</p>
+    <p><strong>Buy Me a Coffee</strong><br>
+      <a href="https://buymeacoffee.com/koprulucan">https://buymeacoffee.com/koprulucan</a>
+    </p>
+    <p>Support is optional and is not required to use the app.</p>
+
+    <footer>
+      <p>Can's Pebbleton HR Bridge</p>
+    </footer>
+  </main>
+</body>
+</html>
